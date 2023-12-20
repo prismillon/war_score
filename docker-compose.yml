@@ -1,10 +1,10 @@
 version: '3.8'
 services:
-  statsoverlay:
+  war_overlay:
     container_name: war_overlay
     image: war_overlay
     ports:
-      - "55991:55991/tcp"
+      - "25991:25991/tcp"
     volumes:
       - /home/ujr/prv/mk.db:/app/mk.db
     restart: unless-stopped
