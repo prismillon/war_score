@@ -26,7 +26,7 @@ struct WarData {
 
 
 fn query_db(channel_id: String) -> Option<WarData> {
-    let conn = match Connection::open("/app/mk.db") {
+    let conn = match Connection::open("mk.db") {
         Ok(v) => v,
         Err(_) => return None,
     };
