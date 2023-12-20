@@ -1,0 +1,8 @@
+version: '3.8'
+services:
+  statsoverlay:
+    container_name: war_overlay
+    image: war_overlay
+    ports:
+      - "55991:55991/tcp"
+    restart: unless-stopped
