@@ -340,7 +340,7 @@ async fn main() -> std::io::Result<()> {
         .service(index)
         .service(overlay)
     })
-    .bind("127.0.0.1:25991")?
+    .bind("0.0.0.0:25991")?
     .run()
     .await
 }
