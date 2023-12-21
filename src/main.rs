@@ -206,7 +206,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                     transform: translateX(-50%);
                     }}
                     .overlay-container.respect-kusaan .overlay-inner {{
-                    background: rgba(0, 0, 0, 0.4);
+                    background: rgba(0, 0, 0, 0.5);
                     color: #ffffff;
                     border-radius: 25px;
                     position: relative;
@@ -278,7 +278,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 <script>
                 let currentData;
                 setInterval(async () => {{
-                    const response = await fetch('/json/{}');
+                    const response = await fetch('/api/{}');
                     const newData = await response.json();
                 
                     if (JSON.stringify(newData) !== JSON.stringify(currentData)) {{
@@ -326,7 +326,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
 }
 
 
-#[get("/json/{channel_id}")]
+#[get("/api/{channel_id}")]
 async fn index(path: web::Path<String>) -> Result<impl Responder> {
     let channel_id = path.into_inner();
 
