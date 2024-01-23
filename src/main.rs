@@ -101,7 +101,7 @@ struct OverlayData {
     ennemy_score: i32,
     diff: i32,
     last_diff: Option<i32>,
-    race_count: i32,
+    race_left: i32,
 }
 
 #[get("/overlay/{channel_id}")]
@@ -118,7 +118,10 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 ennemy_score: data.ennemy_score,
                 diff: data.diff,
                 last_diff: data.last_diff,
-                race_count: data.race_count,
+                race_left: match 12 - data.race_count {
+                    v if v < 0 => 0,
+                    v => v,
+                },
             };
             
             let class = if overlay_data.diff > 0 {
@@ -295,7 +298,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                     <div class="header">
                         <p class="score-dif {}">{}</p>
                         <p class="space"></p>
-                        <p class="left-race">race count: {}</p>
+                        <p class="left-race">race left: {}</p>
                     </div>
                     <div class="body">
                         <p class="team team-1"><span class="team-span">{}</span></p>
@@ -312,7 +315,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 channel_id,
                 class,
                 diff,
-                overlay_data.race_count,
+                overlay_data.race_left,
                 overlay_data.tag,
                 overlay_data.score,
                 overlay_data.ennemy_score,
