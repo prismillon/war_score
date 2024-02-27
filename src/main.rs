@@ -1,6 +1,6 @@
-use actix_web::{get, web, App, HttpServer, Result, Responder, HttpResponse};
-use serde::Serialize;
+use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 
 struct War {
     id: i32,
@@ -24,37 +24,34 @@ struct WarData {
     race_count: i32,
 }
 
-
 fn query_db(channel_id: String) -> Option<WarData> {
     let conn = match Connection::open("mk.db") {
         Ok(v) => v,
         Err(_) => return None,
     };
-    let war_query = conn.query_row("SELECT id, tag, ennemyTag FROM wars where channelId = ?1 order by id desc limit 1", [channel_id], 
+    let war_query = conn.query_row(
+        "SELECT id, tag, ennemyTag FROM wars where channelId = ?1 order by id desc limit 1",
+        [channel_id],
         |row| {
             Ok(War {
                 id: row.get(0)?,
                 tag: row.get(1)?,
                 ennemy_tag: row.get(2)?,
             })
-        }
+        },
     );
-    
+
     let war_data = match war_query {
         Ok(v) => v,
         Err(_) => return None,
     };
-    
+
     let mut races_stmt = match conn.prepare("select diff from races where warId = ?1") {
         Ok(v) => v,
         Err(_) => return None,
     };
 
-    let races_query = races_stmt.query_map([war_data.id], |row| {
-        Ok(Race {
-            diff: row.get(0)?,
-        })
-    });
+    let races_query = races_stmt.query_map([war_data.id], |row| Ok(Race { diff: row.get(0)? }));
 
     let race_data = match races_query {
         Ok(v) => v,
@@ -68,13 +65,13 @@ fn query_db(channel_id: String) -> Option<WarData> {
             Ok(r) => diffs.push(r.diff),
             Err(_) => continue,
         }
-    };
+    }
 
     let diffs = diffs;
     let race_count = i32::try_from(diffs.len()).unwrap_or(0);
     let diff: i32 = diffs.iter().sum();
-    let score = race_count * 41 + diff/2;
-    let ennemy_score = race_count * 41 - diff/2;
+    let score = race_count * 41 + diff / 2;
+    let ennemy_score = race_count * 41 - diff / 2;
     let last_diff = diffs.iter().last();
 
     let res = WarData {
@@ -90,8 +87,6 @@ fn query_db(channel_id: String) -> Option<WarData> {
 
     Some(res)
 }
-
-
 
 #[derive(Serialize)]
 struct OverlayData {
@@ -123,7 +118,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                     v => v,
                 },
             };
-            
+
             let class = if overlay_data.diff > 0 {
                 "plus"
             } else if overlay_data.diff < 0 {
@@ -131,13 +126,12 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
             } else {
                 ""
             };
-            
+
             let diff = if overlay_data.diff > 0 {
                 format!("+{}", overlay_data.diff)
             } else {
                 overlay_data.diff.to_string()
             };
-            
 
             let html_response = format!(
                 r#"
@@ -284,12 +278,12 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                     const response = await fetch('/api/{}');
                     const newData = await response.json();
                 
-                    if (JSON.stringify(newData) !== JSON.stringify(currentData)) {{
+                    if (JSON.stringify(newData) != JSON.stringify(currentData)) {{
                         location.reload();
                     }}
                     currentData = newData;
 
-                }}, 5000);
+                }}, 30000);
                 </script>
                 </head>
                 <body>
@@ -322,12 +316,13 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 overlay_data.enemy_tag
             );
 
-            Ok(HttpResponse::Ok().content_type("text/html").body(html_response))
+            Ok(HttpResponse::Ok()
+                .content_type("text/html")
+                .body(html_response))
         }
         None => Ok(HttpResponse::NotFound().body("Data not found")),
     }
 }
-
 
 #[get("/api/{channel_id}")]
 async fn index(path: web::Path<String>) -> Result<impl Responder> {
@@ -338,12 +333,8 @@ async fn index(path: web::Path<String>) -> Result<impl Responder> {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
-        App::new()
-        .service(index)
-        .service(overlay)
-    })
-    .bind("0.0.0.0:25991")?
-    .run()
-    .await
+    HttpServer::new(|| App::new().service(index).service(overlay))
+        .bind("0.0.0.0:25991")?
+        .run()
+        .await
 }
