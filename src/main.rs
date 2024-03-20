@@ -1,102 +1,69 @@
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, Result};
-use rusqlite::Connection;
-use serde::Serialize;
+use redis::Commands;
+use serde::{Deserialize, Serialize};
 
-struct War {
-    id: i32,
-    tag: String,
-    ennemy_tag: String,
-}
-
-struct Race {
-    diff: i32,
-}
-
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct WarData {
     id: i32,
     tag: String,
     ennemy_tag: String,
-    score: i32,
-    ennemy_score: i32,
-    diff: i32,
+    home_score: Vec<i32>,
+    ennemy_score: Vec<i32>,
+    diff: Vec<i32>,
     last_diff: Option<i32>,
-    race_count: i32,
-}
-
-fn query_db(channel_id: String) -> Option<WarData> {
-    let conn = match Connection::open("mk.db") {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-    let war_query = conn.query_row(
-        "SELECT id, tag, ennemyTag FROM wars where channelId = ?1 order by id desc limit 1",
-        [channel_id],
-        |row| {
-            Ok(War {
-                id: row.get(0)?,
-                tag: row.get(1)?,
-                ennemy_tag: row.get(2)?,
-            })
-        },
-    );
-
-    let war_data = match war_query {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    let mut races_stmt = match conn.prepare("select diff from races where warId = ?1") {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    let races_query = races_stmt.query_map([war_data.id], |row| Ok(Race { diff: row.get(0)? }));
-
-    let race_data = match races_query {
-        Ok(v) => v,
-        Err(_) => return None,
-    };
-
-    let mut diffs: Vec<i32> = vec![];
-
-    for race in race_data {
-        match race {
-            Ok(r) => diffs.push(r.diff),
-            Err(_) => continue,
-        }
-    }
-
-    let diffs = diffs;
-    let race_count = i32::try_from(diffs.len()).unwrap_or(0);
-    let diff: i32 = diffs.iter().sum();
-    let score = race_count * 41 + diff / 2;
-    let ennemy_score = race_count * 41 - diff / 2;
-    let last_diff = diffs.iter().last();
-
-    let res = WarData {
-        id: war_data.id,
-        tag: war_data.tag,
-        ennemy_tag: war_data.ennemy_tag,
-        score,
-        ennemy_score,
-        diff,
-        last_diff: Some(*last_diff.unwrap_or(&0)),
-        race_count,
-    };
-
-    Some(res)
 }
 
 #[derive(Serialize)]
 struct OverlayData {
     tag: String,
-    enemy_tag: String,
+    ennemy_tag: String,
     score: i32,
     ennemy_score: i32,
     diff: i32,
     last_diff: Option<i32>,
-    race_left: i32,
+    race_left: usize,
+}
+
+fn query_db(channel_id: String) -> Option<OverlayData> {
+    let client = match redis::Client::open("redis://127.0.0.1/") {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let mut con = match client.get_connection() {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let war_data: String = match con.get(channel_id) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let war_state: WarData = match serde_json::from_str(war_data.as_str()) {
+        Ok(v) => v,
+        Err(_) => return None,
+    };
+
+    let diff: i32 = war_state.diff.iter().sum();
+
+    let race_count = i32::try_from(war_state.diff.len()).unwrap_or(0);
+    let score = race_count * 41 + diff / 2;
+    let ennemy_score = race_count * 41 - diff / 2;
+    let last_diff = war_state.diff.iter().last().copied();
+    let race_left = 12 - war_state.diff.len();
+
+    let res = OverlayData {
+        tag: war_state.tag,
+        ennemy_tag: war_state.ennemy_tag,
+        score,
+        ennemy_score,
+        diff,
+        last_diff,
+        race_left,
+    };
+
+    Some(res)
 }
 
 #[get("/overlay/{channel_id}")]
@@ -108,15 +75,12 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
         Some(data) => {
             let overlay_data = OverlayData {
                 tag: data.tag,
-                enemy_tag: data.ennemy_tag,
+                ennemy_tag: data.ennemy_tag,
                 score: data.score,
                 ennemy_score: data.ennemy_score,
                 diff: data.diff,
                 last_diff: data.last_diff,
-                race_left: match 12 - data.race_count {
-                    v if v < 0 => 0,
-                    v => v,
-                },
+                race_left: data.race_left,
             };
 
             let class = if overlay_data.diff > 0 {
@@ -313,7 +277,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 overlay_data.tag,
                 overlay_data.score,
                 overlay_data.ennemy_score,
-                overlay_data.enemy_tag
+                overlay_data.ennemy_tag
             );
 
             Ok(HttpResponse::Ok()
