@@ -4,11 +4,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct WarData {
-    id: i32,
     tag: String,
-    ennemy_tag: String,
+    enemy_tag: String,
     home_score: Vec<i32>,
-    ennemy_score: Vec<i32>,
+    enemy_score: Vec<i32>,
     diff: Vec<i32>,
     last_diff: Option<i32>,
 }
@@ -16,16 +15,16 @@ struct WarData {
 #[derive(Serialize)]
 struct OverlayData {
     tag: String,
-    ennemy_tag: String,
+    enemy_tag: String,
     score: i32,
-    ennemy_score: i32,
+    enemy_score: i32,
     diff: i32,
     last_diff: Option<i32>,
     race_left: usize,
 }
 
 fn query_db(channel_id: String) -> Option<OverlayData> {
-    let client = match redis::Client::open("redis://127.0.0.1/") {
+    let client = match redis::Client::open("redis://redis:6379") {
         Ok(v) => v,
         Err(_) => return None,
     };
@@ -49,15 +48,15 @@ fn query_db(channel_id: String) -> Option<OverlayData> {
 
     let race_count = i32::try_from(war_state.diff.len()).unwrap_or(0);
     let score = race_count * 41 + diff / 2;
-    let ennemy_score = race_count * 41 - diff / 2;
+    let enemy_score = race_count * 41 - diff / 2;
     let last_diff = war_state.diff.iter().last().copied();
     let race_left = 12 - war_state.diff.len();
 
     let res = OverlayData {
         tag: war_state.tag,
-        ennemy_tag: war_state.ennemy_tag,
+        enemy_tag: war_state.enemy_tag,
         score,
-        ennemy_score,
+        enemy_score,
         diff,
         last_diff,
         race_left,
@@ -75,9 +74,9 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
         Some(data) => {
             let overlay_data = OverlayData {
                 tag: data.tag,
-                ennemy_tag: data.ennemy_tag,
+                enemy_tag: data.enemy_tag,
                 score: data.score,
-                ennemy_score: data.ennemy_score,
+                enemy_score: data.enemy_score,
                 diff: data.diff,
                 last_diff: data.last_diff,
                 race_left: data.race_left,
@@ -276,8 +275,8 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 overlay_data.race_left,
                 overlay_data.tag,
                 overlay_data.score,
-                overlay_data.ennemy_score,
-                overlay_data.ennemy_tag
+                overlay_data.enemy_score,
+                overlay_data.enemy_tag
             );
 
             Ok(HttpResponse::Ok()
