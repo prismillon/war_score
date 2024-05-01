@@ -20,7 +20,7 @@ struct OverlayData {
     enemy_score: i32,
     diff: i32,
     last_diff: Option<i32>,
-    race_left: usize,
+    race_left: i32,
 }
 
 fn query_db(channel_id: String) -> Option<OverlayData> {
@@ -50,7 +50,10 @@ fn query_db(channel_id: String) -> Option<OverlayData> {
     let score = race_count * 41 + diff / 2;
     let enemy_score = race_count * 41 - diff / 2;
     let last_diff = war_state.diff.iter().last().copied();
-    let race_left = 12 - war_state.diff.len();
+    let race_left = match 12 - race_count {
+        v if v < 0 || v > 12 => 0,
+        v => v,
+    };
 
     let res = OverlayData {
         tag: war_state.tag,
