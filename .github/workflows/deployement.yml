@@ -45,4 +45,4 @@ jobs:
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
         with:
-          args: rollout restart deployment -n warscore warscore
+          args: rollout restart deployment -n quaxly warscore
