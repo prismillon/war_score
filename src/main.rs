@@ -1,4 +1,5 @@
 use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, Result};
+use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 
@@ -26,23 +27,36 @@ struct OverlayData {
 fn query_db(channel_id: String) -> Option<OverlayData> {
     let client = match redis::Client::open("redis://redis:6379") {
         Ok(v) => v,
-        Err(_) => return None,
+        Err(e) => {
+            error!(target: &channel_id, "{e}");
+            return None;
+        }
     };
+    info!(target: &channel_id, "connected to redis");
 
     let mut con = match client.get_connection() {
         Ok(v) => v,
         Err(_) => return None,
     };
+    info!(target: &channel_id, "connection made to redis");
 
-    let war_data: String = match con.get(channel_id) {
+    let war_data: String = match con.get(&channel_id) {
         Ok(v) => v,
-        Err(_) => return None,
+        Err(e) => {
+            error!(target: &channel_id, "{e}");
+            return None;
+        }
     };
+    info!(target: &channel_id, "war data: {war_data}");
 
     let war_state: WarData = match serde_json::from_str(war_data.as_str()) {
         Ok(v) => v,
-        Err(_) => return None,
+        Err(e) => {
+            error!(target: &channel_id, "{e}");
+            return None;
+        }
     };
+    info!(target: &channel_id, "data parsed");
 
     let diff: i32 = war_state.diff.iter().sum();
 
@@ -51,7 +65,7 @@ fn query_db(channel_id: String) -> Option<OverlayData> {
     let enemy_score = race_count * 41 - diff / 2;
     let last_diff = war_state.diff.iter().last().copied();
     let race_left = match 12 - race_count {
-        v if v < 0 || v > 12 => 0,
+        v if v < 0 => (race_count / 4 + 1) * 4 - race_count,
         v => v,
     };
 
