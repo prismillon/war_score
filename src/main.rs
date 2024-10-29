@@ -65,7 +65,7 @@ fn query_db(channel_id: String) -> Option<OverlayData> {
     let enemy_score = race_count * 41 - diff / 2;
     let last_diff = war_state.diff.iter().last().copied();
     let race_left = match 12 - race_count {
-        v if v < 0 || v > -4 => v + 4,
+        v if v < 0 && v > -4 => v + 4,
         v if v <= -4 => 0,
         v => v,
     };
