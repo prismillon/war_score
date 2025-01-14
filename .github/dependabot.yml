@@ -10,7 +10,6 @@ updates:
     schedule:
       interval: "weekly"
     cargo:
-      python:
-        applies-to: version-updates
-        patterns:
-          - "*"
+      applies-to: version-updates
+      patterns:
+        - "*"
