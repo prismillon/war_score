@@ -282,7 +282,7 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 }}
 
                 function connectWebSocket() {{
-                    ws = new WebSocket(`ws://${{window.location.host}}/ws/{channel_id}`);
+                    ws = new WebSocket(`wss://${{window.location.host}}/ws/{channel_id}`);
                     
                     ws.onmessage = function(event) {{
                         const newData = JSON.parse(event.data);
