@@ -1,7 +1,10 @@
-use actix_web::{get, web, App, HttpResponse, HttpServer, Responder, Result};
+use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
+use actix_web_actors::ws;
 use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 #[derive(Serialize, Deserialize)]
 struct WarData {
@@ -25,7 +28,7 @@ struct OverlayData {
 }
 
 fn query_db(channel_id: String) -> Option<OverlayData> {
-    let client = match redis::Client::open("redis://redis:6379") {
+    let client = match redis::Client::open("redis://localhost:6379") {
         Ok(v) => v,
         Err(e) => {
             error!(target: &channel_id, "{e}");
@@ -255,16 +258,69 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 </style>
                 <script>
                 let currentData;
-                setInterval(async () => {{
-                    const response = await fetch('/api/{}');
-                    const newData = await response.json();
-                
-                    if (JSON.stringify(newData) != JSON.stringify(currentData)) {{
-                        location.reload();
-                    }}
-                    currentData = newData;
+                let ws;
+                let previousScore = {score};
+                let previousEnemyScore = {enemy_score};
 
-                }}, 30000);
+                function animateNumber(element, start, end, duration) {{
+                    const startTime = performance.now();
+                    const updateNumber = (currentTime) => {{
+                        const elapsed = currentTime - startTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        
+                        const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+                        const current = Math.round(start + (end - start) * easeInOut(progress));
+                        
+                        element.textContent = current;
+                        
+                        if (progress < 1) {{
+                            requestAnimationFrame(updateNumber);
+                        }}
+                    }};
+                    
+                    requestAnimationFrame(updateNumber);
+                }}
+
+                function connectWebSocket() {{
+                    ws = new WebSocket(`ws://${{window.location.host}}/ws/{channel_id}`);
+                    
+                    ws.onmessage = function(event) {{
+                        const newData = JSON.parse(event.data);
+                        
+                        if (JSON.stringify(newData) !== JSON.stringify(currentData)) {{
+                            const scoreElement = document.querySelector('.score-1');
+                            const enemyScoreElement = document.querySelector('.score-2');
+                            const diffElement = document.querySelector('.score-dif');
+                            
+                            if (newData.score !== previousScore) {{
+                                animateNumber(scoreElement, previousScore, newData.score, 800);
+                            }}
+                            
+                            if (newData.enemy_score !== previousEnemyScore) {{
+                                animateNumber(enemyScoreElement, previousEnemyScore, newData.enemy_score, 800);
+                            }}
+                            
+                            const diff = newData.diff;
+                            const diffClass = diff > 0 ? 'plus' : diff < 0 ? 'minus' : '';
+                            const diffText = diff > 0 ? `+${{diff}}` : diff.toString();
+                            
+                            diffElement.className = `score-dif ${{diffClass}}`;
+                            diffElement.textContent = diffText;
+                            
+                            document.querySelector('.left-race').textContent = `race left: ${{newData.race_left}}`;
+                            
+                            previousScore = newData.score;
+                            previousEnemyScore = newData.enemy_score;
+                            currentData = newData;
+                        }}
+                    }};
+                    
+                    ws.onclose = function() {{
+                        setTimeout(connectWebSocket, 1000);
+                    }};
+                }}
+                
+                connectWebSocket();
                 </script>
                 </head>
                 <body>
@@ -287,14 +343,15 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
                 </body>
                 </html>
                 "#,
-                channel_id,
                 class,
                 diff,
                 overlay_data.race_left,
                 overlay_data.tag,
                 overlay_data.score,
                 overlay_data.enemy_score,
-                overlay_data.enemy_tag
+                overlay_data.enemy_tag,
+                score = overlay_data.score,
+                enemy_score = overlay_data.enemy_score
             );
 
             Ok(HttpResponse::Ok()
@@ -312,9 +369,85 @@ async fn index(path: web::Path<String>) -> Result<impl Responder> {
     Ok(web::Json(query_db(channel_id)))
 }
 
+struct WebSocketConnection {
+    channel_id: String,
+    hb: Instant,
+}
+
+impl Actor for WebSocketConnection {
+    type Context = ws::WebsocketContext<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        self.hb(ctx);
+
+        ctx.run_interval(Duration::from_secs(1), |act, ctx| {
+            if let Some(data) = query_db(act.channel_id.clone()) {
+                let json = serde_json::to_string(&data).unwrap();
+                ctx.text(json);
+            }
+        });
+    }
+}
+
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketConnection {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
+        match msg {
+            Ok(ws::Message::Ping(msg)) => {
+                self.hb = Instant::now();
+                ctx.pong(&msg);
+            }
+            Ok(ws::Message::Pong(_)) => {
+                self.hb = Instant::now();
+            }
+            Ok(ws::Message::Text(_)) => {
+                if let Some(data) = query_db(self.channel_id.clone()) {
+                    let json = serde_json::to_string(&data).unwrap();
+                    ctx.text(json);
+                }
+            }
+            Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
+            Ok(ws::Message::Close(reason)) => {
+                ctx.close(reason);
+                ctx.stop();
+            }
+            _ => ctx.stop(),
+        }
+    }
+}
+
+impl WebSocketConnection {
+    fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
+        ctx.run_interval(Duration::from_secs(30), |act, ctx| {
+            if Instant::now().duration_since(act.hb) > Duration::from_secs(75) {
+                ctx.stop();
+            } else {
+                ctx.ping(b"");
+            }
+        });
+    }
+}
+
+#[get("/ws/{channel_id}")]
+async fn ws_index(
+    req: HttpRequest,
+    stream: web::Payload,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let channel_id = path.into_inner();
+    let resp = ws::start(
+        WebSocketConnection {
+            channel_id,
+            hb: Instant::now(),
+        },
+        &req,
+        stream,
+    )?;
+    Ok(resp)
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(index).service(overlay))
+    HttpServer::new(|| App::new().service(index).service(overlay).service(ws_index))
         .bind("0.0.0.0:25991")?
         .run()
         .await
