@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.12.1"
-actix-ws = "0.3"
+actix-ws = "0.4"
 futures-util = "0.3"
 tokio = { version = "1", features = ["macros", "time"] }
 log = "0.4.29"
