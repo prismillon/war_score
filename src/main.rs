@@ -1,10 +1,11 @@
-use actix::{Actor, ActorContext, AsyncContext, StreamHandler};
-use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
-use actix_web_actors::ws;
+use actix_web::{get, rt, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result};
+use actix_ws::AggregatedMessage;
+use futures_util::StreamExt;
 use log::{error, info};
 use redis::Commands;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
+use tokio::time::interval;
 
 #[derive(Serialize, Deserialize)]
 struct WarData {
@@ -413,108 +414,17 @@ async fn index(path: web::Path<String>) -> Result<impl Responder> {
     Ok(web::Json(query_db(channel_id)))
 }
 
-struct WebSocketConnection {
-    channel_id: String,
-    hb: Instant,
-    last_data: Option<OverlayData>,
+/// Run `query_db` on a blocking threadpool so the synchronous redis call
+/// never blocks the async runtime.
+async fn query(channel_id: &str) -> Option<OverlayData> {
+    let channel_id = channel_id.to_owned();
+    web::block(move || query_db(channel_id))
+        .await
+        .ok()
+        .flatten()
 }
 
-impl Actor for WebSocketConnection {
-    type Context = ws::WebsocketContext<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        self.hb(ctx);
-
-        // Send initial state
-        if let Some(data) = query_db(self.channel_id.clone()) {
-            let json = serde_json::to_string(&data).unwrap();
-            ctx.text(json);
-            self.last_data = Some(data);
-        } else {
-            ctx.text(r#"{"error": "War data not available"}"#);
-            self.last_data = None;
-        }
-
-        ctx.run_interval(Duration::from_secs(1), |act, ctx| {
-            let current_data = query_db(act.channel_id.clone());
-
-            // Handle data availability changes
-            match (&act.last_data, &current_data) {
-                (Some(_), None) => {
-                    // Data became unavailable
-                    ctx.text(r#"{"error": "War data not available"}"#);
-                    act.last_data = None;
-                }
-                (None, Some(new_data)) => {
-                    // Data became available
-                    let json = serde_json::to_string(new_data).unwrap();
-                    ctx.text(json);
-                    act.last_data = current_data;
-                }
-                (Some(old_data), Some(new_data)) => {
-                    // Check if data changed
-                    if old_data.tag != new_data.tag
-                        || old_data.enemy_tag != new_data.enemy_tag
-                        || old_data.score != new_data.score
-                        || old_data.enemy_score != new_data.enemy_score
-                        || old_data.diff != new_data.diff
-                        || old_data.race_left != new_data.race_left
-                    {
-                        let json = serde_json::to_string(new_data).unwrap();
-                        ctx.text(json);
-                    }
-                    act.last_data = current_data;
-                }
-                (None, None) => {
-                    // Still no data
-                    act.last_data = None;
-                }
-            }
-        });
-    }
-}
-
-impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WebSocketConnection {
-    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
-        match msg {
-            Ok(ws::Message::Ping(msg)) => {
-                self.hb = Instant::now();
-                ctx.pong(&msg);
-            }
-            Ok(ws::Message::Pong(_)) => {
-                self.hb = Instant::now();
-            }
-            Ok(ws::Message::Text(_)) => {
-                if let Some(data) = query_db(self.channel_id.clone()) {
-                    let json = serde_json::to_string(&data).unwrap();
-                    ctx.text(json);
-                    self.last_data = Some(data);
-                } else {
-                    ctx.text(r#"{"error": "War data not available"}"#);
-                    self.last_data = None;
-                }
-            }
-            Ok(ws::Message::Binary(bin)) => ctx.binary(bin),
-            Ok(ws::Message::Close(reason)) => {
-                ctx.close(reason);
-                ctx.stop();
-            }
-            _ => ctx.stop(),
-        }
-    }
-}
-
-impl WebSocketConnection {
-    fn hb(&self, ctx: &mut ws::WebsocketContext<Self>) {
-        ctx.run_interval(Duration::from_secs(30), |act, ctx| {
-            if Instant::now().duration_since(act.hb) > Duration::from_secs(75) {
-                ctx.stop();
-            } else {
-                ctx.ping(b"");
-            }
-        });
-    }
-}
+const DATA_UNAVAILABLE: &str = r#"{"error": "War data not available"}"#;
 
 #[get("/ws/{channel_id}")]
 async fn ws_index(
@@ -523,16 +433,132 @@ async fn ws_index(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let channel_id = path.into_inner();
-    let resp = ws::start(
-        WebSocketConnection {
-            channel_id,
-            hb: Instant::now(),
-            last_data: None,
-        },
-        &req,
-        stream,
-    )?;
-    Ok(resp)
+    let (res, mut session, msg_stream) = actix_ws::handle(&req, stream)?;
+    let mut msg_stream = msg_stream.aggregate_continuations();
+
+    rt::spawn(async move {
+        let mut hb = Instant::now();
+        let mut last_data: Option<OverlayData> = None;
+
+        // Send initial state
+        match query(&channel_id).await {
+            Some(data) => {
+                if session
+                    .text(serde_json::to_string(&data).unwrap())
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+                last_data = Some(data);
+            }
+            None => {
+                let _ = session.text(DATA_UNAVAILABLE).await;
+            }
+        }
+
+        let mut hb_interval = interval(Duration::from_secs(30));
+        let mut poll_interval = interval(Duration::from_secs(1));
+
+        let close_reason = loop {
+            tokio::select! {
+                msg = msg_stream.next() => {
+                    match msg {
+                        Some(Ok(AggregatedMessage::Ping(bytes))) => {
+                            hb = Instant::now();
+                            if session.pong(&bytes).await.is_err() {
+                                break None;
+                            }
+                        }
+                        Some(Ok(AggregatedMessage::Pong(_))) => {
+                            hb = Instant::now();
+                        }
+                        Some(Ok(AggregatedMessage::Text(_))) => {
+                            match query(&channel_id).await {
+                                Some(data) => {
+                                    if session
+                                        .text(serde_json::to_string(&data).unwrap())
+                                        .await
+                                        .is_err()
+                                    {
+                                        break None;
+                                    }
+                                    last_data = Some(data);
+                                }
+                                None => {
+                                    if session.text(DATA_UNAVAILABLE).await.is_err() {
+                                        break None;
+                                    }
+                                    last_data = None;
+                                }
+                            }
+                        }
+                        Some(Ok(AggregatedMessage::Binary(bin))) => {
+                            if session.binary(bin).await.is_err() {
+                                break None;
+                            }
+                        }
+                        Some(Ok(AggregatedMessage::Close(reason))) => break reason,
+                        Some(Err(_)) | None => break None,
+                    }
+                }
+                _ = hb_interval.tick() => {
+                    if Instant::now().duration_since(hb) > Duration::from_secs(75) {
+                        break None;
+                    }
+                    if session.ping(b"").await.is_err() {
+                        break None;
+                    }
+                }
+                _ = poll_interval.tick() => {
+                    let current_data = query(&channel_id).await;
+
+                    // Handle data availability changes
+                    match (&last_data, &current_data) {
+                        (Some(_), None) => {
+                            if session.text(DATA_UNAVAILABLE).await.is_err() {
+                                break None;
+                            }
+                            last_data = None;
+                        }
+                        (None, Some(new_data)) => {
+                            if session
+                                .text(serde_json::to_string(new_data).unwrap())
+                                .await
+                                .is_err()
+                            {
+                                break None;
+                            }
+                            last_data = current_data;
+                        }
+                        (Some(old_data), Some(new_data)) => {
+                            if old_data.tag != new_data.tag
+                                || old_data.enemy_tag != new_data.enemy_tag
+                                || old_data.score != new_data.score
+                                || old_data.enemy_score != new_data.enemy_score
+                                || old_data.diff != new_data.diff
+                                || old_data.race_left != new_data.race_left
+                            {
+                                if session
+                                    .text(serde_json::to_string(new_data).unwrap())
+                                    .await
+                                    .is_err()
+                                {
+                                    break None;
+                                }
+                            }
+                            last_data = current_data;
+                        }
+                        (None, None) => {}
+                    }
+                }
+            }
+        };
+
+        let _ = session.close(close_reason).await;
+    });
+
+    Ok(res)
 }
 
 #[actix_web::main]

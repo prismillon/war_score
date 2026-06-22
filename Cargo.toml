@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 actix-web = "4.12.1"
-actix = "0.13"
-actix-web-actors = "4.2"
+actix-ws = "0.3"
+futures-util = "0.3"
+tokio = { version = "1", features = ["macros", "time"] }
 log = "0.4.29"
 redis = "1.0.3"
 serde = { version = "1.0.228", features = ["derive"] }
