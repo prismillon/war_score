@@ -1,137 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-  <style>
-    :root {
-      --root-background : rgba(0, 0, 0, 0);
-      --t2-header-height: 50px;
-      --t2-body-height  : 80px;
-      --t2-team-height  : 85px;
-      --t2-space-width  : 100px;
-      --t2-team-width   : 150px;
-      --t2-score-width  : 130px;
-      --t2-all-width    : calc(var(--t2-space-width) + (var(--t2-team-width) * 2) + (var(--t2-score-width) * 2));
-      --t2-dif-width    : calc(var(--t2-team-width) + var(--t2-score-width));
-      --t2-header-font  : 35px;
-      --t2-score-font   : 60px;
-      --t2-team-font    : 50px;
-      --t2-plus-color   : orangered;
-      --t2-minus-color  : deepskyblue;
-      --t2-race-color   : gold;
-      --t2-win-font     : 35px;
-      --t2-win-background: yellow;
-      --t2-win-color     : orangered;
-    }
-    body, div, p {
-      display: block;
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      border: none;
-      border-radius: 0;
-      overflow: hidden;
-      white-space: nowrap;
-      text-align: center;
-    }
-    p {
-      display: inline-block;
-            height: 100%;
-    }
-    body {
-      background: var(--root-background);
-      background-size: cover;
-      background-position: center;
-      margin: 0;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .team-span {
-      display: inline-block;
-      transform-origin: left top;
-    }
-    .overlay-container {
-      width: 800px;
-      height: 160px;
-      justify-content: center;
-      flex-direction: column;
-      align-items: center; 
-      flex-wrap: wrap;
-      font-weight: bold;
-      font-family: sans-serif;
-      margin-top: auto;
-    }
-      .overlay-container.respect-kusaan .overlay-inner {
-        background: rgba(0, 0, 0, 0.4);
-        color: #ffffff;
-        border-radius: 25px;
-        position: relative;
-      }
-      .overlay-container.respect-kusaan.team-num-2 .overlay-inner {
-      }
-        .overlay-container.respect-kusaan.team-num-2 .header {
-          height: var(--t2-header-height);
-        }
-          .overlay-container.respect-kusaan.team-num-2 .header p {
-            line-height: calc(10px + var(--t2-header-height));
-            font-size: var(--t2-header-font);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .header .score-dif {
-            width: var(--t2-dif-width);
-            text-align: right;
-          }
-          .overlay-container.respect-kusaan.team-num-2 .header .score-dif.plus {
-            color: var(--t2-plus-color);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .header .score-dif.minus {
-            color: var(--t2-minus-color);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .header .space {
-            width: var(--t2-space-width);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .header .left-race {
-            color: var(--t2-race-color);
-            width: var(--t2-dif-width);
-            text-align: left;
-          }
-        .overlay-container.respect-kusaan.team-num-2 .body {
-          height: var(--t2-body-height);
-        }
-          .overlay-container.respect-kusaan.team-num-2 .body p {
-            line-height: var(--t2-body-height);
-            font-size: var(--t2-score-font);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .body .team {
-            width: var(--t2-team-width);
-            font-size: var(--t2-team-font);
-            line-height: var(--t2-team-height);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .body .score {
-            width: var(--t2-score-width);
-          }
-          .overlay-container.respect-kusaan.team-num-2 .body .score-1 {
-            text-align: right;
-          }
-          .overlay-container.respect-kusaan.team-num-2 .body .score-2 {
-            text-align: left;
-          }
-          .overlay-container.respect-kusaan.team-num-2 .body .split {
-            width: var(--t2-space-width);
-          }
-        .overlay-container.respect-kusaan.team-num-2 .win {
-          position: absolute;
-          left: 0;
-          top: 0;
-          font-size: var(--t2-win-font);
-          width: var(--t2-team-width);
-          height: var(--t2-header-height);
-          line-height: var(--t2-header-height);
-          background: var(--t2-win-background);
-          color: var(--t2-win-color);
-        }
-  </style>
+<meta charset="UTF-8">
+<title>war score — overlay preview</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700&family=Titan+One&display=swap');
+
+:root {
+  --glass: rgba(13, 16, 23, 0.62);
+  --stroke: rgba(247, 248, 244, 0.16);
+  --chalk: #F7F8F4;
+  --chalk-dim: rgba(247, 248, 244, 0.6);
+  --lead: #FFC530;
+  --trail: #5BC2FF;
+  --pen: #FF5A5F;
+  --ink: #10131A;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: transparent;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.bug {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Titan One', 'Arial Rounded MT Bold', sans-serif;
+  color: var(--chalk);
+  animation: bug-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes bug-in {
+  from { opacity: 0; transform: translate(-50%, 14px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.panel {
+  background: var(--glass);
+  border: 1px solid var(--stroke);
+  border-radius: 18px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  padding: 12px 26px 11px;
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+.main {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.tag {
+  width: 148px;
+  font-size: 30px;
+  line-height: 1.2;
+  text-align: center;
+  overflow: hidden;
+}
+.tag-span {
+  display: inline-block;
+  white-space: nowrap;
+  transform-origin: center center;
+}
+
+.score-cell { position: relative; }
+.score {
+  min-width: 112px;
+  font-size: 52px;
+  line-height: 1.1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pod {
+  position: relative;
+  min-width: 92px;
+  padding: 9px 14px 7px;
+  border-radius: 12px;
+  font-size: 25px;
+  line-height: 1;
+  text-align: center;
+  background: rgba(247, 248, 244, 0.12);
+  transition: background 0.3s, color 0.3s;
+}
+.pod.plus  { background: var(--lead);  color: var(--ink); }
+.pod.minus { background: var(--trail); color: var(--ink); }
+.pod::before, .pod::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  margin-top: -7px;
+  border: 7px solid transparent;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.pod::before { left: -7px;  border-left-width: 0;  border-right-color: var(--lead); }
+.pod::after  { right: -7px; border-right-width: 0; border-left-color: var(--trail); }
+.pod.plus::before { opacity: 1; }
+.pod.minus::after { opacity: 1; }
+
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 9px;
+}
+.strip::before { content: ""; width: 118px; }
+.pips { display: flex; gap: 5px; }
+.pip {
+  width: 24px;
+  height: 12px;
+  border-radius: 3px;
+  background: rgba(247, 248, 244, 0.22);
+}
+.pip.spent {
+  background: repeating-conic-gradient(#EDEFEA 0% 25%, #171B23 0% 50%);
+  background-size: 12px 12px;
+}
+.pip.just { animation: pip-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes pip-pop {
+  0%   { transform: scaleY(0.2); }
+  60%  { transform: scaleY(1.3); }
+  100% { transform: scaleY(1); }
+}
+
+.races {
+  width: 118px;
+  font-family: 'Saira Condensed', 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.14em;
+  color: var(--chalk-dim);
+}
+
+.pen {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  font-family: 'Saira Condensed', 'Arial Narrow', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  padding: 4px 10px 3px;
+  border-radius: 8px;
+  background: var(--pen);
+  color: #fff;
+  white-space: nowrap;
+  box-shadow: 0 0 0 3px var(--glass);
+  animation: pen-in 0.3s ease-out both;
+}
+.pen:empty { display: none; }
+@keyframes pen-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bug, .pip.just, .pen { animation: none; }
+  .panel, .pod, .pod::before, .pod::after { transition: none; }
+}
+
+/* ------ preview-only chrome (not in production) ------ */
+.preview-hint {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  font-family: 'Saira Condensed', 'Arial Narrow', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #F7F8F4;
+  background: rgba(13, 16, 23, 0.6);
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+</style>
 </head>
-<body>
-  <div id="team-num-2" class="overlay-container respect-kusaan team-num-2"><div class="overlay-inner"><div class="header"><p class="score-dif plus">{}</p><p class="space"></p><p class="left-race">{}</p></div><div class="body"><p class="team team-1"><span class="team-span">{}</span></p><p class="score score-1">{}</p><p class="split">-</p><p class="score score-2">{}</p><p class="team team-2"><span class="team-span">{}</span></p></div></div></div>
+<body class="preview">
+  <p class="preview-hint">PREVIEW — CLICK ANYWHERE TO CYCLE WAR STATES</p>
+
+  <div class="bug">
+    <div class="panel">
+      <div class="main">
+        <p class="tag tag-home"><span class="tag-span">RX</span></p>
+        <div class="score-cell">
+          <p class="score score-home">0</p>
+          <p class="pen pen-home"></p>
+        </div>
+        <p class="pod">0</p>
+        <div class="score-cell">
+          <p class="score score-enemy">0</p>
+          <p class="pen pen-enemy"></p>
+        </div>
+        <p class="tag tag-enemy"><span class="tag-span">MIRAGE</span></p>
+      </div>
+      <div class="strip">
+        <div class="pips"><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></div>
+        <p class="races">12 RACES LEFT</p>
+      </div>
+    </div>
+  </div>
+
+<script>
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TOTAL_RACES = 12;
+
+let previousScore = 0;
+let previousEnemyScore = 0;
+let previousSpent = 0;
+
+function animateNumber(element, start, end, duration) {
+  if (REDUCED || start === end) {
+    element.textContent = end;
+    return;
+  }
+  const startTime = performance.now();
+  const update = (now) => {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const easeInOut = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    element.textContent = Math.round(start + (end - start) * easeInOut(progress));
+    if (progress < 1) requestAnimationFrame(update);
+  };
+  requestAnimationFrame(update);
+}
+
+function fitTag(span) {
+  span.style.transform = 'none';
+  const max = span.parentElement.clientWidth;
+  const width = span.getBoundingClientRect().width;
+  if (width > max) span.style.transform = 'scale(' + (max / width) + ')';
+}
+
+function fitTags() {
+  document.querySelectorAll('.tag-span').forEach(fitTag);
+}
+
+function setTag(selector, text) {
+  const span = document.querySelector(selector);
+  if (span.textContent !== text) span.textContent = text;
+  fitTag(span);
+}
+
+function racesLabel(left) {
+  if (left === 0) return 'FINAL';
+  return left + (left === 1 ? ' RACE LEFT' : ' RACES LEFT');
+}
+
+function updatePips(raceLeft) {
+  const spent = Math.min(Math.max(TOTAL_RACES - raceLeft, 0), TOTAL_RACES);
+  document.querySelectorAll('.pip').forEach((pip, i) => {
+    const wasSpent = pip.classList.contains('spent');
+    pip.classList.toggle('spent', i < spent);
+    if (!wasSpent && i < spent) pip.classList.add('just');
+  });
+  setTimeout(() => {
+    document.querySelectorAll('.pip.just').forEach(p => p.classList.remove('just'));
+  }, 600);
+  previousSpent = spent;
+}
+
+function apply(data) {
+  setTag('.tag-home .tag-span', data.tag);
+  setTag('.tag-enemy .tag-span', data.enemy_tag);
+
+  if (data.score !== previousScore) {
+    animateNumber(document.querySelector('.score-home'), previousScore, data.score, 800);
+  }
+  if (data.enemy_score !== previousEnemyScore) {
+    animateNumber(document.querySelector('.score-enemy'), previousEnemyScore, data.enemy_score, 800);
+  }
+
+  const pod = document.querySelector('.pod');
+  pod.className = 'pod ' + (data.diff > 0 ? 'plus' : data.diff < 0 ? 'minus' : '');
+  pod.textContent = data.diff > 0 ? '+' + data.diff : String(data.diff);
+
+  updatePips(data.race_left);
+  document.querySelector('.races').textContent = racesLabel(data.race_left);
+
+  document.querySelector('.pen-home').textContent = data.home_pen > 0 ? 'PEN -' + data.home_pen : '';
+  document.querySelector('.pen-enemy').textContent = data.enemy_pen > 0 ? 'PEN -' + data.enemy_pen : '';
+
+  previousScore = data.score;
+  previousEnemyScore = data.enemy_score;
+}
+
+/* Realistic 6v6 war states: each race distributes 82 points. */
+const STATES = [
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 0,   enemy_score: 0,   diff: 0,   race_left: 12, home_pen: 0,  enemy_pen: 0 },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 295, enemy_score: 279, diff: 16,  race_left: 5,  home_pen: 0,  enemy_pen: 0 },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 351, enemy_score: 377, diff: -26, race_left: 3,  home_pen: 10, enemy_pen: 0 },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 505, enemy_score: 479, diff: 26,  race_left: 0,  home_pen: 10, enemy_pen: 0 },
+];
+let stateIndex = 0;
+
+/* Deep-link a state for screenshots: overlay.html?state=2 */
+const wanted = parseInt(new URLSearchParams(window.location.search).get('state'), 10);
+if (!Number.isNaN(wanted) && STATES[wanted]) {
+  stateIndex = wanted;
+  document.fonts.ready.then(() => apply(STATES[stateIndex]));
+}
+
+document.addEventListener('click', () => {
+  stateIndex = (stateIndex + 1) % STATES.length;
+  apply(STATES[stateIndex]);
+});
+
+document.fonts.ready.then(fitTags);
+fitTags();
+</script>
 </body>
 </html>
