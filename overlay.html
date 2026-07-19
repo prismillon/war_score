@@ -14,6 +14,8 @@
   --lead: #FFC530;
   --trail: #5BC2FF;
   --pen: #FF5A5F;
+  --win: #4ADE80;
+  --loss: #FF5A5F;
   --ink: #10131A;
 }
 
@@ -45,19 +47,19 @@ body {
   border: 1px solid var(--stroke);
   border-radius: 18px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-  padding: 12px 26px 11px;
+  padding: 12px 22px 11px;
   transition: opacity 0.3s, filter 0.3s;
 }
 
 .main {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
 }
 
 .tag {
-  width: 148px;
-  font-size: 30px;
+  width: 132px;
+  font-size: 32px;
   line-height: 1.2;
   text-align: center;
   overflow: hidden;
@@ -70,7 +72,7 @@ body {
 
 .score-cell { position: relative; }
 .score {
-  min-width: 112px;
+  min-width: 104px;
   font-size: 52px;
   line-height: 1.1;
   text-align: center;
@@ -123,6 +125,8 @@ body {
   background: repeating-conic-gradient(#EDEFEA 0% 25%, #171B23 0% 50%);
   background-size: 12px 12px;
 }
+.pip.win  { box-shadow: 0 1px 0 var(--win); }
+.pip.loss { box-shadow: 0 1px 0 var(--loss); }
 .pip.just { animation: pip-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes pip-pop {
   0%   { transform: scaleY(0.2); }
@@ -254,11 +258,14 @@ function racesLabel(left) {
   return left + (left === 1 ? ' RACE LEFT' : ' RACES LEFT');
 }
 
-function updatePips(raceLeft) {
+function updatePips(raceLeft, raceDiffs) {
   const spent = Math.min(Math.max(TOTAL_RACES - raceLeft, 0), TOTAL_RACES);
+  const diffs = raceDiffs || [];
   document.querySelectorAll('.pip').forEach((pip, i) => {
     const wasSpent = pip.classList.contains('spent');
     pip.classList.toggle('spent', i < spent);
+    pip.classList.toggle('win', i < spent && diffs[i] > 0);
+    pip.classList.toggle('loss', i < spent && diffs[i] < 0);
     if (!wasSpent && i < spent) pip.classList.add('just');
   });
   setTimeout(() => {
@@ -282,7 +289,7 @@ function apply(data) {
   pod.className = 'pod ' + (data.diff > 0 ? 'plus' : data.diff < 0 ? 'minus' : '');
   pod.textContent = data.diff > 0 ? '+' + data.diff : String(data.diff);
 
-  updatePips(data.race_left);
+  updatePips(data.race_left, data.race_diffs);
   document.querySelector('.races').textContent = racesLabel(data.race_left);
 
   document.querySelector('.pen-home').textContent = data.home_pen > 0 ? 'PEN -' + data.home_pen : '';
@@ -294,10 +301,14 @@ function apply(data) {
 
 /* Realistic 6v6 war states: each race distributes 82 points. */
 const STATES = [
-  { tag: 'RX', enemy_tag: 'MIRAGE', score: 0,   enemy_score: 0,   diff: 0,   race_left: 12, home_pen: 0,  enemy_pen: 0 },
-  { tag: 'RX', enemy_tag: 'MIRAGE', score: 295, enemy_score: 279, diff: 16,  race_left: 5,  home_pen: 0,  enemy_pen: 0 },
-  { tag: 'RX', enemy_tag: 'MIRAGE', score: 351, enemy_score: 377, diff: -26, race_left: 3,  home_pen: 10, enemy_pen: 0 },
-  { tag: 'RX', enemy_tag: 'MIRAGE', score: 505, enemy_score: 479, diff: 26,  race_left: 0,  home_pen: 10, enemy_pen: 0 },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 0,   enemy_score: 0,   diff: 0,   race_left: 12, home_pen: 0,  enemy_pen: 0,
+    race_diffs: [] },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 295, enemy_score: 279, diff: 16,  race_left: 5,  home_pen: 0,  enemy_pen: 0,
+    race_diffs: [8, -6, 14, 2, -10, 4, 4] },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 351, enemy_score: 377, diff: -26, race_left: 3,  home_pen: 10, enemy_pen: 0,
+    race_diffs: [8, -6, 14, 2, -10, 0, 8, -20, -12] },
+  { tag: 'RX', enemy_tag: 'MIRAGE', score: 505, enemy_score: 479, diff: 26,  race_left: 0,  home_pen: 10, enemy_pen: 0,
+    race_diffs: [8, -6, 14, 2, -10, 0, 8, -20, -12, 18, 22, 12] },
 ];
 let stateIndex = 0;
 

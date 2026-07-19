@@ -30,6 +30,7 @@ struct OverlayData {
     diff: i32,
     last_diff: Option<i32>,
     race_left: i32,
+    race_diffs: Vec<i32>,
     home_pen: i32,
     enemy_pen: i32,
 }
@@ -88,6 +89,7 @@ fn query_db(channel_id: String) -> Option<OverlayData> {
         diff,
         last_diff,
         race_left,
+        race_diffs: war_state.diff,
         home_pen: war_state.home_pen,
         enemy_pen: war_state.enemy_pen,
     };
@@ -109,6 +111,8 @@ const OVERLAY_HEAD: &str = r##"<head>
   --lead: #FFC530;
   --trail: #5BC2FF;
   --pen: #FF5A5F;
+  --win: #4ADE80;
+  --loss: #FF5A5F;
   --ink: #10131A;
 }
 
@@ -140,19 +144,19 @@ body {
   border: 1px solid var(--stroke);
   border-radius: 18px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-  padding: 12px 26px 11px;
+  padding: 12px 22px 11px;
   transition: opacity 0.3s, filter 0.3s;
 }
 
 .main {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
 }
 
 .tag {
-  width: 148px;
-  font-size: 30px;
+  width: 132px;
+  font-size: 32px;
   line-height: 1.2;
   text-align: center;
   overflow: hidden;
@@ -165,7 +169,7 @@ body {
 
 .score-cell { position: relative; }
 .score {
-  min-width: 112px;
+  min-width: 104px;
   font-size: 52px;
   line-height: 1.1;
   text-align: center;
@@ -218,6 +222,8 @@ body {
   background: repeating-conic-gradient(#EDEFEA 0% 25%, #171B23 0% 50%);
   background-size: 12px 12px;
 }
+.pip.win  { box-shadow: 0 1px 0 var(--win); }
+.pip.loss { box-shadow: 0 1px 0 var(--loss); }
 .pip.just { animation: pip-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes pip-pop {
   0%   { transform: scaleY(0.2); }
@@ -309,11 +315,14 @@ function racesLabel(left) {
   return left + (left === 1 ? ' RACE LEFT' : ' RACES LEFT');
 }
 
-function updatePips(raceLeft) {
+function updatePips(raceLeft, raceDiffs) {
   const spent = Math.min(Math.max(TOTAL_RACES - raceLeft, 0), TOTAL_RACES);
+  const diffs = raceDiffs || [];
   document.querySelectorAll('.pip').forEach((pip, i) => {
     const wasSpent = pip.classList.contains('spent');
     pip.classList.toggle('spent', i < spent);
+    pip.classList.toggle('win', i < spent && diffs[i] > 0);
+    pip.classList.toggle('loss', i < spent && diffs[i] < 0);
     if (!wasSpent && i < spent) pip.classList.add('just');
   });
   setTimeout(() => {
@@ -336,7 +345,7 @@ function apply(data) {
   pod.className = 'pod ' + (data.diff > 0 ? 'plus' : data.diff < 0 ? 'minus' : '');
   pod.textContent = data.diff > 0 ? '+' + data.diff : String(data.diff);
 
-  updatePips(data.race_left);
+  updatePips(data.race_left, data.race_diffs);
   document.querySelector('.races').textContent = racesLabel(data.race_left);
 
   document.querySelector('.pen-home').textContent = data.home_pen > 0 ? 'PEN -' + data.home_pen : '';
@@ -428,11 +437,20 @@ async fn overlay(path: web::Path<String>) -> Result<impl Responder> {
             None => ("", "0".to_string(), 12, "...", 0, 0, "...", String::new(), String::new()),
         };
 
+    let race_diffs: &[i32] = json_data
+        .as_ref()
+        .map(|data| data.race_diffs.as_slice())
+        .unwrap_or(&[]);
+
     let spent = (12 - race_left).clamp(0, 12);
     let pips: String = (0..12)
         .map(|i| {
             if i < spent {
-                r#"<span class="pip spent"></span>"#
+                match race_diffs.get(i as usize).copied().unwrap_or(0) {
+                    d if d > 0 => r#"<span class="pip spent win"></span>"#,
+                    d if d < 0 => r#"<span class="pip spent loss"></span>"#,
+                    _ => r#"<span class="pip spent"></span>"#,
+                }
             } else {
                 r#"<span class="pip"></span>"#
             }
@@ -612,6 +630,7 @@ async fn ws_index(
                                 || old_data.enemy_score != new_data.enemy_score
                                 || old_data.diff != new_data.diff
                                 || old_data.race_left != new_data.race_left
+                                || old_data.race_diffs != new_data.race_diffs
                                 || old_data.home_pen != new_data.home_pen
                                 || old_data.enemy_pen != new_data.enemy_pen
                             {
